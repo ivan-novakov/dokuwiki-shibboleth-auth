@@ -20,6 +20,8 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
 
     const CONF_VAR_MAIL = 'var_mail';
 
+    const CONF_VAR_ENTITLEMENT = 'var_entitlement';
+
     const CONF_LOGOUT_HANDLER = 'logout_handler';
 
     const CONF_LOGOUT_HANDLER_LOCATION = 'logout_handler_location';
@@ -32,6 +34,8 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
 
     const CONF_USE_DOKUWIKI_SESSION = 'use_dokuwiki_session';
 
+    const CONF_GROUP_SOURCE_CONFIG = 'group_source_config';
+
     const CONF_LOG_ENABLED = 'log_enabled';
 
     const CONF_LOG_FILE = 'log_file';
@@ -43,6 +47,18 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     const USER_NAME = 'name';
 
     const USER_MAIL = 'mail';
+
+    const USER_GRPS = 'grps';
+
+    const GROUP_SOURCE_TYPE_ENVIRONMENT = 'environment';
+
+    const GROUP_SOURCE_TYPE_FILE = 'file';
+
+    /**
+     * GLobal configuration.
+     * @var array
+     */
+    protected $globalConf = array();
 
     /**
      * Environment variable values ($_SERVER).
@@ -65,16 +81,26 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         $this->cando['external'] = true;
         $this->cando['logoff'] = true;
         
-        $this->environment = $_SERVER;
+        $this->setEnvironment($_SERVER);
+        
+        global $conf;
+        $this->setGlobalConfiguration($conf);
+        
         // $this->loadConfig();
         
         $this->success = true;
     }
 
 
-    public function setEnvironment($environment)
+    public function setEnvironment(array $environment)
     {
         $this->environment = $environment;
+    }
+
+
+    public function setGlobalConfiguration(array $globalConf)
+    {
+        $this->globalConf = $globalConf;
     }
 
 
@@ -85,9 +111,9 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         
         // _log($_SERVER);
         // _log($conf);
-        $this->log('Checking...');
         
         if ($this->getConf(self::CONF_USE_DOKUWIKI_SESSION) && ($userInfo = $this->loadUserInfoFromSession()) !== null) {
+            $this->log('Loaded user from session');
             return;
         }
         
@@ -97,40 +123,40 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
             $this->setUserId($userId);
             $this->setUserDisplayName($this->retrieveUserDisplayName());
             $this->setUserMail($this->retrieveUserMail());
+            $this->setUserGroups($this->retrieveUserGroups());
             
             $this->saveUserInfoToSession();
             $this->saveGlobalUserInfo();
             
+            $this->log('Loaded user from environment');
+            
             return true;
         }
         
-        /* Is it necessary?
-        if (! $this->_getOption('lazy_sessions')) {
-            auth_logoff();
-        }
-        */
-        
+        auth_logoff();
         return false;
     }
 
 
     public function logoff()
     {
-        $url = $this->getConf(self::CONF_LOGOUT_HANDLER_LOCATION);
-        if (! $url) {
-            $url = $this->createLogoutHandlerLocation();
+        /*
+         * Initiate a logout sequence only, if there is a Shibboleth identity
+         */
+        if ($this->retrieveUserId()) {
+            $url = $this->getConf(self::CONF_LOGOUT_HANDLER_LOCATION);
+            if (! $url) {
+                $url = $this->createLogoutHandlerLocation();
+            }
+            
+            $this->debug(sprintf("Logout redirect: %s", $url));
+            
+            header('Location: ' . $url);
+            exit();
         }
-        
-        $this->debug(sprintf("Logout redirect: %s", $url));
-        
-        header('Location: ' . $url);
-        exit();
     }
-    
-    /*
-     * Protected methods
-     */
-    
+
+
     /**
      * Saves user info into the session.
      */
@@ -147,6 +173,8 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
 
     /**
      * Loads user info from the session.
+     * 
+     * @return array|null
      */
     protected function loadUserInfoFromSession()
     {
@@ -158,6 +186,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
                 $username = $authInfo['user'];
                 
                 $this->setUserInfo($userInfo);
+                $this->saveGlobalUserInfo();
                 
                 return $userInfo;
             }
@@ -193,6 +222,22 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
 
 
     /**
+     * Returns the value of global configuration variable.
+     * 
+     * @param string $varName
+     * @return mixed|null
+     */
+    protected function getGlobalConfVar($varName)
+    {
+        if (isset($this->globalConf[$varName])) {
+            return $this->globalConf[$varName];
+        }
+        
+        return null;
+    }
+
+
+    /**
      * Returns a Shibboleth variable.
      * 
      * @param string $varName
@@ -223,6 +268,17 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         }
         
         return null;
+    }
+
+
+    /**
+     * Extracts user's identity from the environment.
+     * 
+     * @return string|null
+     */
+    protected function retrieveUserId()
+    {
+        return $this->getShibVar($this->getConf(self::CONF_VAR_REMOTE_USER));
     }
 
 
@@ -296,39 +352,260 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     }
 
 
+    /**
+     * Resolves the user's groups.
+     * 
+     * @return array
+     */
+    protected function retrieveUserGroups()
+    {
+        $groups = array();
+        
+        // default groups
+        if (($defaultGroup = $this->getGlobalConfVar('defaultgroup')) !== null) {
+            $groups[] = $defaultGroup;
+        }
+        
+        $groupSourceConfig = $this->getConf(self::CONF_GROUP_SOURCE_CONFIG);
+        if (is_array($groupSourceConfig)) {
+            foreach ($groupSourceConfig as $sourceName => $config) {
+                if (! isset($config['type'])) {
+                    $this->log(sprintf("Group source '%s' without a type", $sourceName));
+                    continue;
+                }
+                $sourceType = $config['type'];
+                $sourceOptions = array();
+                if (isset($config['options'])) {
+                    $sourceOptions = $config['options'];
+                }
+                
+                $sourceGroups = $this->retrieveUserGroupsFromSource($sourceName, $sourceType, $sourceOptions);
+                if (is_array($sourceGroups)) {
+                    $groups = array_merge($groups, $sourceGroups);
+                }
+            }
+        } else {
+            $this->log(sprintf("The value of '%s' must be an array", self::CONF_GROUP_SOURCE_CONFIG));
+        }
+        
+        $this->log(sprintf("Resolved groups: %s", implode(', ', $groups)));
+        
+        return $groups;
+    }
+
+
+    /**
+     * Resolves the user's groups from different sources.
+     * 
+     * @param string $sourceType
+     * @param array $sourceOptions
+     * @return array
+     */
+    protected function retrieveUserGroupsFromSource($sourceName, $sourceType, array $sourceOptions)
+    {
+        $groups = array();
+        
+        $this->debug(sprintf("Resolving groups from source '%s' (%s)", $sourceName, $sourceType));
+        
+        $handler = 'retrieveUserGroupsFrom' . ucfirst($sourceType);
+        if (! method_exists($this, $handler)) {
+            $this->log(sprintf("Non-existent group source handler '%s'", $handler));
+            return $groups;
+        }
+        
+        try {
+            $sourceGroups = call_user_func_array(array(
+                $this,
+                $handler
+            ), array(
+                $sourceOptions
+            ));
+        } catch (Exception $e) {
+            $this->log(sprintf("Error retrieving groups from source '%s' (%s): %s", $sourceName, $sourceType, $e->getMessage()));
+            return $groups;
+        }
+        
+        $this->debug(sprintf("Resolved roups from source '%s' (%s): %s", $sourceName, $sourceType, implode(', ', $sourceGroups)));
+        
+        /*
+         * Groups "post-processing"
+         */
+        foreach ($sourceGroups as $group) {
+            if (isset($sourceOptions['map'])) {
+                $map = $sourceOptions['map'];
+                if (isset($map[$group])) {
+                    $group = $map[$group];
+                }
+            }
+            
+            if (isset($sourceOptions['prefix'])) {
+                $group = $sourceOptions['prefix'] . $group;
+            }
+            
+            $groups[] = $group;
+        }
+        
+        return $groups;
+    }
+
+
+    /**
+     * Resolves user's groups from the environment variables.
+     * 
+     * @param array $options
+     * @throws RuntimeException
+     * @return array
+     */
+    protected function retrieveUserGroupsFromEnvironment(array $options)
+    {
+        $groups = array();
+        
+        if (! isset($options['source_attribute'])) {
+            throw new RuntimeException('The required "source_attribute" option not set');
+        }
+        $sourceAttributeName = $options['source_attribute'];
+        
+        $values = $this->getShibVar($sourceAttributeName, true);
+        if (null !== $values) {
+            foreach ($values as $value) {
+                
+                $groups[] = $value;
+            }
+        }
+        
+        return $groups;
+    }
+
+
+    /**
+     * Resolves user's groups from a file.
+     * 
+     * @param array $options
+     * @throws RuntimeException
+     * @return array
+     */
+    protected function retrieveUserGroupsFromFile(array $options)
+    {
+        $groups = array();
+        
+        $userId = $this->getUserId();
+        if (! $userId) {
+            throw new RuntimeException('No user identity');
+        }
+        
+        if (! isset($options['path'])) {
+            throw new RuntimeException('The required "path" option not set');
+        }
+        
+        $path = $options['path'];
+        if (! file_exists($path)) {
+            throw new RuntimeException(sprintf("Non-existent file '%s'", $path));
+        }
+        
+        if (! is_readable($path)) {
+            throw new RuntimeException(sprintf("File '%s' not readable", $path));
+        }
+        
+        $sourceGroups = require $path;
+        if (! is_array($sourceGroups)) {
+            throw new RuntimeException(sprintf("Invalid group format in file '%s'", $path));
+        }
+        
+        foreach ($sourceGroups as $groupName => $members) {
+            if (in_array($userId, $members)) {
+                $groups[] = $groupName;
+            }
+        }
+        
+        return $groups;
+    }
+
+
+    /**
+     * Returns the user ID (user's identity value).
+     * 
+     * @return string|null
+     */
     protected function getUserId()
     {
         return $this->getUserVar(self::USER_UID);
     }
 
 
+    /**
+     * Sets the user ID.
+     * 
+     * @param string $userId
+     */
     protected function setUserId($userId)
     {
         $this->setUserVar(self::USER_UID, $userId);
     }
 
 
+    /**
+     * Returns the user's display name.
+     * 
+     * @return string|null
+     */
     protected function getUserDisplayName()
     {
         return $this->getUserVar(self::USER_NAME);
     }
 
 
+    /**
+     * Sets the user's display name.
+     * 
+     * @param string $userDisplayName
+     */
     protected function setUserDisplayName($userDisplayName)
     {
         $this->setUserVar(self::USER_NAME, $userDisplayName);
     }
 
 
+    /**
+     * Returns the user's mail.
+     * 
+     * @return string|null
+     */
     protected function getUserMail()
     {
         return $this->getUserVar(self::USER_MAIL);
     }
 
 
+    /**
+     * Sets the user's mail.
+     * 
+     * @param string $mail
+     */
     protected function setUserMail($mail)
     {
         $this->setUserVar(self::USER_MAIL, $mail);
+    }
+
+
+    /**
+     * Returns the list of user's groups.
+     * 
+     * @return array
+     */
+    protected function getUserGroups()
+    {
+        return $this->getUserVar(self::USER_GRPS);
+    }
+
+
+    /**
+     * Sets the user's groups.
+     * 
+     * @param array $groups
+     */
+    protected function setUserGroups(array $groups)
+    {
+        $this->setUserVar(self::USER_GRPS, $groups);
     }
 
 
@@ -420,7 +697,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         if (! $userId) {
             $userId = 'unknown';
         }
-        return sprintf("[%s] [%s] %s", $_SERVER['REQUEST_URI'], $userId, $message);
+        return sprintf("[%s] %s [%s]", $userId, $message, $_SERVER['REQUEST_URI']);
     }
 }
 

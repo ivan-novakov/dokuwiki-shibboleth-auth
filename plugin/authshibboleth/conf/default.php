@@ -10,7 +10,6 @@ $conf = array(
     /*
      * auth plugin
      */
-    'lazy_sessions' => false,
     
     // Rely on the Dokuwiki session
     'use_dokuwiki_session' => false,
@@ -36,18 +35,26 @@ $conf = array(
     // The variable, which contains user's email
     'var_mail' => 'mail',
     
+    // The variable, which contains user's groups
+    //'var_groups' => '',
+    
+    // The variable, which contains user's entitlements
     'var_entitlement' => 'entitlement',
-    'var_groups' => '',
+    
+    'group_source_config' => array(),
     
     // Simple template for user display name construction
     'display_name_tpl' => null,
     
-    'superusers' => array(),
+    //'superusers' => array(),
     // 'defaultgroup' => $conf['defaultgroup'],
-    'admingroup' => 'admin',
-    'customgroups' => false,
-    'customgroups_file' => DOKU_CONF . 'custom_groups.php',
-    'entitlement_groups' => array(),
+    //'admingroup' => 'admin',
+    
+    //'customgroups' => false,
+    //'customgroups_file' => DOKU_CONF . 'custom_groups.php',
+    
+    // Map entitlement to group name
+    //'entitlement_groups' => array(),
     
     // Enable logging
     'log_enabled' => false,
