@@ -1,9 +1,11 @@
 <?php
 
 /**
- * DokuWiki Plugin authshibboleth (Auth Component)
+ * DokuWiki Plugin authshibboleth (Auth Component).
  *
- * @author  Ivan Novakov <ivan.novakov@debug.cz>
+ * @author  Ivan Novakov http://novakov.cz/
+ * @license http://debug.cz/license/bsd-3-clause BSD 3 Clause 
+ * @link https://github.com/ivan-novakov/dokuwiki-shibboleth-auth
  */
 
 // must be run within Dokuwiki
@@ -19,8 +21,8 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     const CONF_VAR_DISPLAY_NAME = 'var_display_name';
 
     const CONF_VAR_MAIL = 'var_mail';
-
-    const CONF_VAR_ENTITLEMENT = 'var_entitlement';
+    
+    const CONF_VAR_SHIB_SESSION_ID = 'var_shib_session_id';
 
     const CONF_LOGOUT_HANDLER = 'logout_handler';
 
@@ -40,7 +42,9 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
 
     const CONF_LOG_FILE = 'log_file';
 
-    const CONF_DEBUG = 'debug';
+    const CONF_LOG_TO_PHP = 'log_to_php';
+
+    const CONF_LOG_PRIORITY = 'log_priority';
 
     const USER_UID = 'uid';
 
@@ -54,8 +58,14 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
 
     const GROUP_SOURCE_TYPE_FILE = 'file';
 
+    const LOG_DEBUG = 7;
+
+    const LOG_INFO = 6;
+
+    const LOG_ERR = 3;
+
     /**
-     * GLobal configuration.
+     * Global configuration.
      * @var array
      */
     protected $globalConf = array();
@@ -86,51 +96,61 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         global $conf;
         $this->setGlobalConfiguration($conf);
         
-        // $this->loadConfig();
-        
         $this->success = true;
     }
 
 
+    /**
+     * Sets the environment variables.
+     * 
+     * @param array $environment
+     */
     public function setEnvironment(array $environment)
     {
         $this->environment = $environment;
     }
 
 
+    /**
+     * Sets the global configuration variables.
+     * 
+     * @param array $globalConf
+     */
     public function setGlobalConfiguration(array $globalConf)
     {
         $this->globalConf = $globalConf;
     }
 
 
+    /**
+     * {@inheritdoc}
+     * @see DokuWiki_Auth_Plugin::trustExternal()
+     */
     public function trustExternal()
     {
-        global $USERINFO;
-        global $conf;
-        
-        // _log($_SERVER);
-        // _log($conf);
-        
         if ($this->getConf(self::CONF_USE_DOKUWIKI_SESSION) && ($userInfo = $this->loadUserInfoFromSession()) !== null) {
             $this->log('Loaded user from session');
             return;
         }
         
-        $userId = $this->getShibVar($this->getConf(self::CONF_VAR_REMOTE_USER));
-        if ($userId) {
+        if ($this->getShibVar(self::CONF_VAR_SHIB_SESSION_ID)) {
+            $this->log('Trying to authenticate user...');
             
-            $this->setUserId($userId);
-            $this->setUserDisplayName($this->retrieveUserDisplayName());
-            $this->setUserMail($this->retrieveUserMail());
-            $this->setUserGroups($this->retrieveUserGroups());
-            
-            $this->saveUserInfoToSession();
-            $this->saveGlobalUserInfo();
-            
-            $this->log('Loaded user from environment');
-            
-            return true;
+            $userId = $this->getShibVar($this->getConf(self::CONF_VAR_REMOTE_USER));
+            if ($userId) {
+                
+                $this->setUserId($userId);
+                $this->setUserDisplayName($this->retrieveUserDisplayName());
+                $this->setUserMail($this->retrieveUserMail());
+                $this->setUserGroups($this->retrieveUserGroups());
+                
+                $this->saveUserInfoToSession();
+                $this->saveGlobalUserInfo();
+                
+                $this->log('Loaded user from environment');
+                
+                return true;
+            }
         }
         
         auth_logoff();
@@ -138,7 +158,11 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     }
 
 
-    public function logoff()
+    /**
+     * {@inheritdoc}
+     * @see DokuWiki_Auth_Plugin::logOff()
+     */
+    public function logOff()
     {
         /*
          * Initiate a logout sequence only, if there is a Shibboleth identity
@@ -214,10 +238,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         }
         
         $USERINFO = $userInfo;
-        
-        if ($this->getConf(self::CONF_VAR_REMOTE_USER) != 'REMOTE_USER') {
-            $_SERVER['REMOTE_USER'] = $userInfo['uid'];
-        }
+        $_SERVER['REMOTE_USER'] = $userInfo['uid'];
     }
 
 
@@ -425,7 +446,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
             return $groups;
         }
         
-        $this->debug(sprintf("Resolved roups from source '%s' (%s): %s", $sourceName, $sourceType, implode(', ', $sourceGroups)));
+        $this->debug(sprintf("Resolved groups from source '%s' (%s): %s", $sourceName, $sourceType, implode(', ', $sourceGroups)));
         
         /*
          * Groups "post-processing"
@@ -609,12 +630,24 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     }
 
 
+    /**
+     * Sets a specific user variable value.
+     * 
+     * @param string $varName
+     * @param mixed $varValue
+     */
     protected function setUserVar($varName, $varValue)
     {
         $this->userInfo[$varName] = $varValue;
     }
 
 
+    /**
+     * Returns a specific user variable value.
+     * 
+     * @param string $varName
+     * @return mixed|null
+     */
     protected function getUserVar($varName)
     {
         if (isset($this->userInfo[$varName])) {
@@ -625,18 +658,35 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     }
 
 
+    /**
+     * Sets all the user info at once.
+     * 
+     * @param array $userInfo
+     */
     protected function setUserInfo(array $userInfo)
     {
         $this->userInfo = $userInfo;
     }
 
 
+    /**
+     * Returns all the user info.
+     * 
+     * @return array
+     */
     protected function getUserInfo()
     {
         return $this->userInfo;
     }
 
 
+    /**
+     * Build a logout handler URL.
+     * 
+     * @param string $returnUrl
+     * @param string $handlerName
+     * @return string
+     */
     protected function createLogoutHandlerLocation($returnUrl = NULL, $handlerName = 'Logout')
     {
         if (! $returnUrl) {
@@ -655,20 +705,43 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     }
 
 
-    protected function debug($value)
+    /**
+     * Logs a debug message.
+     * 
+     * @param string $message
+     */
+    protected function debug($message)
     {
-        if ($this->getConf('debug')) {
-            error_log('[DOKUWIKI DEBUG]: ' . print_r($value, true));
-        }
+        $this->log($message, self::LOG_DEBUG);
     }
 
 
-    protected function log($message)
+    /**
+     * Logs an error message.
+     * 
+     * @param string $message
+     */
+    protected function err($message)
     {
-        $message = $this->logFormatMessage($message);
-        $this->debug($message);
+        $this->log($message, self::LOG_ERR);
+    }
+
+
+    /**
+     * Log a message.
+     * 
+     * @param mixed $message
+     * @param integer $priority
+     */
+    protected function log($message, $priority = self::LOG_INFO)
+    {
+        $message = $this->logFormatMessage($message, $priority);
         
-        if ($this->getConf(self::CONF_LOG_ENABLED)) {
+        if ($this->getConf(self::CONF_LOG_ENABLED) && $priority <= $this->getConf(self::CONF_LOG_PRIORITY)) {
+            if ($this->getConf(self::CONF_LOG_TO_PHP)) {
+                error_log($message);
+            }
+            
             $logFile = $this->getConf(self::CONF_LOG_FILE);
             if ($logFile) {
                 $flags = null;
@@ -684,25 +757,30 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
                 if (false === file_put_contents($logFile, $message, $flags)) {
                     $this->debug(sprintf("Error writing to log file '%s'", $logFile));
                 }
-            } else {
+            } elseif (! $this->getConf(self::CONF_LOG_TO_PHP)) {
                 $this->debug('Log enabled, but log file not set');
             }
         }
     }
 
 
-    protected function logFormatMessage($message)
+    /**
+     * Formats a log message.
+     * 
+     * @param mixed $message
+     * @param integer $priority
+     * @return string
+     */
+    protected function logFormatMessage($message, $priority)
     {
+        if (! is_scalar($message)) {
+            $message = print_r($message, true);
+        }
+        
         $userId = $this->getUserId();
         if (! $userId) {
             $userId = 'unknown';
         }
-        return sprintf("[%s] %s [%s]", $userId, $message, $_SERVER['REQUEST_URI']);
+        return sprintf("(%d) [%s/%s] %s [%s]", $priority, $userId, $_SERVER['REMOTE_ADDR'], $message, $_SERVER['REQUEST_URI']);
     }
-}
-
-
-function _log($value)
-{
-    error_log(print_r($value, true));
 }

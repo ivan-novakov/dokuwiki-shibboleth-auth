@@ -4,10 +4,11 @@
  * DokuWiki Plugin authshibboleth (Action Component)
  *
  * Intercepts the 'login' action and redirects the user to the Shibboleth Session Initiator Handler
- * instead of showing the login form. Intended to work with the Shibboleth authentication backend with 
- * "lazy session" enabled.
+ * instead of showing the login form.
  * 
- * @author  Ivan Novakov <ivan.novakov@debug.cz>
+ * @author  Ivan Novakov http://novakov.cz/
+ * @license http://debug.cz/license/bsd-3-clause BSD 3 Clause 
+ * @link https://github.com/ivan-novakov/dokuwiki-shibboleth-auth
  */
 
 // must be run within Dokuwiki
@@ -27,32 +28,35 @@ require_once DOKU_PLUGIN . 'action.php';
 class action_plugin_authshibboleth extends DokuWiki_Action_Plugin
 {
 
+    const CONF_SHIBBOLETH_HANDLER_BASE = 'shibboleth_handler_base';
+
+    const CONF_LOGIN_HANDLER = 'login_handler';
+
+    const CONF_LOGIN_TARGET = 'login_target';
+
+    const CONF_LOGIN_HANDLER_LOCATION = 'login_handler_location';
+
 
     public function register(Doku_Event_Handler &$controller)
     {
-        $controller->register_hook('ACTION_ACT_PREPROCESS', 'BEFORE', $this, '_redirectToLoginHandler');
+        $controller->register_hook('ACTION_ACT_PREPROCESS', 'BEFORE', $this, 'redirectToLoginHandler');
     }
 
 
-    public function handle_action_act_preprocess(Doku_Event &$event, $param)
-    {}
-
-
-    function _redirectToLoginHandler($event, $param)
+    public function redirectToLoginHandler($event, $param)
     {
         global $ACT;
         
         if ('login' == $ACT) {
-            $loginHandlerLocation = $this->getConf('login_handler_location');
+            $loginHandlerLocation = $this->getConf(self::CONF_LOGIN_HANDLER_LOCATION);
             if (! $loginHandlerLocation) {
-                $target = $this->getConf('target');
-                if (! $target) {
-                    $target = $this->_mkRefererUrl();
+                $loginTarget = $this->getConf(self::CONF_LOGIN_TARGET);
+                if (! $loginTarget) {
+                    $loginTarget = $this->mkRefererUrl();
                 }
                 
-                $loginHandlerLocation = $this->_mkUrl($_SERVER['HTTP_HOST'], $this->_mkShibHandler(), array(
-                    
-                    'target' => $target
+                $loginHandlerLocation = $this->mkUrl($_SERVER['HTTP_HOST'], $this->mkShibHandler(), array(
+                    'target' => $loginTarget
                 ));
             }
             
@@ -62,19 +66,19 @@ class action_plugin_authshibboleth extends DokuWiki_Action_Plugin
     }
 
 
-    function _mkShibHandler()
+    protected function mkShibHandler()
     {
-        return sprintf("/%s/%s", $this->getConf('sso_handler'), $this->getConf('login_handler'));
+        return sprintf("%s%s", $this->getConf(self::CONF_SHIBBOLETH_HANDLER_BASE), $this->getConf(self::CONF_LOGIN_HANDLER));
     }
 
 
-    function _mkUrl($host, $path, $params = array(), $ssl = true)
+    protected function mkUrl($host, $path, $params = array(), $ssl = true)
     {
-        return sprintf("%s://%s%s%s", $ssl ? 'https' : 'http', $host, $path, $this->_mkQueryString($params));
+        return sprintf("%s://%s%s%s", $ssl ? 'https' : 'http', $host, $path, $this->mkQueryString($params));
     }
 
 
-    function _mkRefererUrl($ssl = true)
+    protected function mkRefererUrl($ssl = true)
     {
         $urlParts = parse_url($_SERVER['HTTP_REFERER']);
         
@@ -86,11 +90,11 @@ class action_plugin_authshibboleth extends DokuWiki_Action_Plugin
         $query = array();
         parse_str($urlParts['query'], $query);
         
-        return $this->_mkUrl($host, $urlParts['path'], $query, $ssl);
+        return $this->mkUrl($host, $urlParts['path'], $query, $ssl);
     }
 
 
-    function _mkQueryString($params = array())
+    protected function mkQueryString($params = array())
     {
         if (empty($params)) {
             return '';
