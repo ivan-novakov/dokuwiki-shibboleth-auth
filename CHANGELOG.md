@@ -1,3 +1,7 @@
+## v0.7.1
+
+* fixed shibboleth session detection
+
 
 ## v0.7.0
 
