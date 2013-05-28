@@ -21,7 +21,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     const CONF_VAR_DISPLAY_NAME = 'var_display_name';
 
     const CONF_VAR_MAIL = 'var_mail';
-    
+
     const CONF_VAR_SHIB_SESSION_ID = 'var_shib_session_id';
 
     const CONF_LOGOUT_HANDLER = 'logout_handler';
@@ -133,7 +133,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
             return;
         }
         
-        if ($this->getShibVar(self::CONF_VAR_SHIB_SESSION_ID)) {
+        if ($this->getShibVar($this->getConf(self::CONF_VAR_SHIB_SESSION_ID))) {
             $this->log('Trying to authenticate user...');
             
             $userId = $this->getShibVar($this->getConf(self::CONF_VAR_REMOTE_USER));
