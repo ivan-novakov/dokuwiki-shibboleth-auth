@@ -329,7 +329,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         $userDisplayName = null;
         $tplUserDisplayName = $this->getConf(self::CONF_DISPLAY_NAME_TPL);
         if ($tplUserDisplayName) {
-            $userDisplayName = $this->getUserDisplayNameFromTpl($tplUserDisplayName);
+            $userDisplayName = $this->retrieveUserDisplayNameFromTpl($tplUserDisplayName);
         }
         
         $userDisplayNameVar = $this->getConf(self::CONF_VAR_DISPLAY_NAME);
