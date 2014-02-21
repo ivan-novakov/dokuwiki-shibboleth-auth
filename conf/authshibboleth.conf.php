@@ -21,6 +21,11 @@ $conf['plugin']['authshibboleth'] = array(
     //'use_dokuwiki_session' => true,
 
     /*
+     * The server variable, which contains the ID of the Shibboleth session.
+     */
+    //'var_shib_session_id' => 'Shib-Session-ID',
+
+    /*
      * var_remote_user
      * 
      * The server variable, which contains the remote user's identity (username, user ID etc.).
