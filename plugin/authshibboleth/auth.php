@@ -128,14 +128,17 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
      */
     public function trustExternal()
     {
+        $this->debug('Checking for DokuWiki session...');
         if ($this->getConf(self::CONF_USE_DOKUWIKI_SESSION) && ($userInfo = $this->loadUserInfoFromSession()) !== null) {
-            $this->log('Loaded user from session');
+            $this->log('Loaded user from DokuWiki session');
             return;
         }
         
-        if ($this->getShibVar($this->getConf(self::CONF_VAR_SHIB_SESSION_ID))) {
-            $this->log('Trying to authenticate user...');
-            
+        $sessionVarName = $this->getConf(self::CONF_VAR_SHIB_SESSION_ID);
+        $this->debug(sprintf("Checking for Shibboleth session [%s] ...", $sessionVarName));
+        if ($this->getShibVar($sessionVarName)) {
+            $this->log('Shibboleth session found, trying to authenticate user...');
+
             $userId = $this->getShibVar($this->getConf(self::CONF_VAR_REMOTE_USER));
             if ($userId) {
                 
@@ -189,7 +192,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         if (! $userInfo) {
             $userInfo = $this->getUserInfo();
         }
-        
+
         $_SESSION[DOKU_COOKIE]['auth']['user'] = $userInfo['uid'];
         $_SESSION[DOKU_COOKIE]['auth']['info'] = $userInfo;
     }
@@ -736,7 +739,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     protected function log($message, $priority = self::LOG_INFO)
     {
         $message = $this->logFormatMessage($message, $priority);
-        
+
         if ($this->getConf(self::CONF_LOG_ENABLED) && $priority <= $this->getConf(self::CONF_LOG_PRIORITY)) {
             if ($this->getConf(self::CONF_LOG_TO_PHP)) {
                 error_log($message);
