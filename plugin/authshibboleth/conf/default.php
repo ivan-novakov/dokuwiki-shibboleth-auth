@@ -58,7 +58,9 @@ $conf = array(
     
     // Enable debugging - writes messages to the PHP's error log
     'log_to_php' => false,
-    
+
+    // Cache file for users display name and mail address
+    'auth_usersfile' => 'users.auth.shib.php',
     
     /*
      * action plugin (action.php)

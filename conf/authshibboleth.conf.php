@@ -183,6 +183,12 @@ $conf['plugin']['authshibboleth'] = array(
      */
     //'log_priority' => 7,
 
+    /*
+     * auth_usersfile
+     *
+     * Cache file for users display name and mail address
+     */
+    //'auth_usersfile' => 'users.auth.shib.php',
     
     /*
      * action plugin (action.php)
