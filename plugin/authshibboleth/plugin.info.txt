@@ -1,7 +1,7 @@
 base authshibboleth
 author Ivan Novakov
 email ivan.novakov@debug.cz
-date 2015-11-04
+date 2020-06-03
 name Shibboleth Authentication Plugin
 desc Provides external authentication via Shibboleth Service Provider instance
 url https://github.com/ivan-novakov/dokuwiki-shibboleth-auth
