@@ -294,7 +294,7 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
         $this->debug('Checking for DokuWiki session...');
         if ($this->getConf(self::CONF_USE_DOKUWIKI_SESSION) && ($userInfo = $this->loadUserInfoFromSession()) !== null) {
             $this->log('Loaded user from DokuWiki session');
-            return;
+            return true;
         }
         
         $sessionVarName = $this->getConf(self::CONF_VAR_SHIB_SESSION_ID);
