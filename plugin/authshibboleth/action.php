@@ -37,7 +37,7 @@ class action_plugin_authshibboleth extends DokuWiki_Action_Plugin
     const CONF_LOGIN_HANDLER_LOCATION = 'login_handler_location';
 
 
-    public function register(Doku_Event_Handler &$controller)
+    public function register(Doku_Event_Handler $controller)
     {
         $controller->register_hook('ACTION_ACT_PREPROCESS', 'BEFORE', $this, 'redirectToLoginHandler');
     }
