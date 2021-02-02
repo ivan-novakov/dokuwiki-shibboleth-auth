@@ -390,20 +390,25 @@ class auth_plugin_authshibboleth extends DokuWiki_Auth_Plugin
     }
 
     protected function _saveUserInfo() {
+        // Prepare user line
         $userInfo = $this->getUserInfo();
+        $groups = join(',',$userInfo['grps']);
+        $userline = join(':',array($userInfo['uid'], $userInfo['name'], $userInfo['mail'], $groups))."\n";
 
-        // user mustn't already exist
+        // Add user if it does not exist in cache, update with current values otherwise
         if ($this->getUserData($userInfo['uid']) === false) {
-            // prepare user line
-            $groups = join(',',$userInfo['grps']);
-            $userline = join(':',array($userInfo['uid'], $userInfo['name'], $userInfo['mail'], $groups))."\n";
-
             if (io_saveFile(DOKU_CONF . '/' . $this->getConf(self::CONF_AUTH_USERSFILE), $userline, true)) {
                 $this->users[$userInfo['uid']] = compact('name', 'mail', 'grps');
             } else {
                 msg('The ' . DOKU_CONF . '/' . $this->getConf(self::CONF_AUTH_USERSFILE) . ' file is not writable. Please inform the Wiki-Admin',-1);
             }
-        }         
+        } else {
+            $pattern = '/^'.preg_quote($userInfo['uid'], '/').':.*$/';
+            $replacement = addcslashes($userline, '\$');
+            if (! (io_replaceInFile(DOKU_CONF . '/' . $this->getConf(self::CONF_AUTH_USERSFILE), $pattern, $replacement, true))) {
+                msg('The ' . DOKU_CONF . '/' . $this->getConf(self::CONF_AUTH_USERSFILE) . ' file is not writable. Please inform the Wiki-Admin',-1);
+            }
+        }
     }
 
     /**
